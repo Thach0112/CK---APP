@@ -162,9 +162,9 @@ function renderDetail() {
   s.rsi.setData(series(d, d.rsi));
   s.hist.setData(d.bars.map((b, i) => isFinite(d.macd.hist[i]) ? { time: b.date, value: d.macd.hist[i], color: (d.macd.hist[i] >= 0 ? up : down) + "99" } : { time: b.date }));
   s.macd.setData(series(d, d.macd.line)); s.sig.setData(series(d, d.macd.sig));
-  s.candle.setMarkers($("tSig").checked ? d.bars.flatMap((b, i) => i && d.action[i] === d.action[i - 1] ? [] : d.action[i] === "MUA"
+  s.candle.setMarkers(window.btMarkers?.(r.sym, d) || ($("tSig").checked ? d.bars.flatMap((b, i) => i && d.action[i] === d.action[i - 1] ? [] : d.action[i] === "MUA"
     ? [{ time: b.date, position: "belowBar", color: up, shape: "arrowUp", text: "M" }]
-    : d.action[i] === "BÁN" ? [{ time: b.date, position: "aboveBar", color: down, shape: "arrowDown", text: "B" }] : []) : []);
+    : d.action[i] === "BÁN" ? [{ time: b.date, position: "aboveBar", color: down, shape: "arrowDown", text: "B" }] : []) : []));
   applyRange();
 
   $("dRules").innerHTML = RULES.map((rule, k) => { const v = d.hits[L][k] || 0;
@@ -175,6 +175,7 @@ function renderDetail() {
   $("dHist").innerHTML = ev.length ? ev.map(i => { const b = d.bars[i], ret = last.close / b.close - 1;
     return `<tr><td class="num">${dmy(b.date)}</td><td>${pill(d.action[i])}</td><td class="r num">${nf(b.close)}</td><td class="r num ${dir(ret)}">${pct(ret)}</td></tr>`; }).join("")
     : `<tr><td colspan="4" class="empty">Chưa có tín hiệu MUA/BÁN trong dữ liệu.</td></tr>`;
+  window.btOnDetail?.(r.sym);
 }
 function applyRange() {
   if (!charts) return; const n = state.rows[state.sel]?.d.bars.length || 0;
