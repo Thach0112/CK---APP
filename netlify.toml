@@ -1,0 +1,14 @@
+# Triển khai lên Netlify: web/ là trang tĩnh, /api/history chạy qua function (thay cho serve.py)
+[build]
+  publish = "web"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/history"
+  to = "/.netlify/functions/history"
+  status = 200
+
+[[redirects]]
+  from = "/api/symbols"
+  to = "/.netlify/functions/symbols"
+  status = 200

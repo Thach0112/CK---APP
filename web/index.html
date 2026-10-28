@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CK Tự Động</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div><b>CK Tự Động</b><small>Lọc và báo tín hiệu Mua/Bán theo chỉ báo kỹ thuật</small></div>
+  </div>
+  <div class="status">
+    <span id="mkt" class="mkt"></span>
+    <span id="updated" class="muted"></span>
+    <button id="refresh" class="btn" title="Tải lại dữ liệu">Làm mới</button>
+  </div>
+</header>
+
+<section class="indices" id="indices" aria-label="Chỉ số thị trường"></section>
+
+<nav class="tabs" role="tablist">
+  <button id="t-scan" class="on" data-tab="scan">Bộ lọc tín hiệu</button>
+  <button id="t-pf" data-tab="pf">Danh mục của tôi</button>
+  <button id="t-chart" data-tab="chart">Theo dõi &amp; biểu đồ</button>
+</nav>
+
+<section id="tab-scan" class="scan">
+  <form id="scrForm" class="panel scr-form">
+    <div class="scr-top">
+      <label>Quét trong
+        <select id="uni">
+          <option value="all">Toàn thị trường (HOSE, HNX, UPCoM)</option>
+          <option value="hose">Sàn HOSE</option>
+          <option value="hnx">Sàn HNX</option>
+          <option value="upcom">Sàn UPCoM</option>
+          <option value="vn30">VN30</option>
+          <option value="liquid">Thanh khoản cao (~100 mã)</option>
+          <option value="pf">Danh mục của tôi (đang nắm giữ)</option>
+          <option value="mine">Danh sách theo dõi</option>
+          <option value="custom">Tự nhập danh sách mã…</option>
+        </select>
+      </label>
+      <input id="custom" type="text" placeholder="VD: FPT, HPG, DGC, PNJ" hidden aria-label="Danh sách mã">
+      <label>Bỏ mã GTGD TB20 dưới <input id="minVal" class="pnum" type="text" inputmode="decimal" value="1"> tỷ/phiên</label>
+      <label>Tín hiệu xuất hiện trong <input id="winN" class="pnum" type="number" min="1" max="30" value="3"> phiên gần nhất</label>
+      <label>Cách lọc
+        <select id="mode"><option value="any">Khớp bất kỳ tiêu chí nào</option><option value="all">Phải khớp tất cả tiêu chí</option></select>
+      </label>
+      <button id="scan" class="btn primary" type="submit">Quét ngay</button>
+    </div>
+    <div class="presets"><span class="muted">Bộ lọc mẫu:</span><div id="presets"></div></div>
+    <div class="crit-cols">
+      <fieldset><legend class="up">Tiêu chí MUA</legend><div id="critBuy"></div></fieldset>
+      <fieldset><legend class="down">Tiêu chí BÁN</legend><div id="critSell"></div></fieldset>
+    </div>
+  </form>
+  <div class="panel scr-res">
+    <div id="scrInfo" class="scr-info"></div>
+    <div class="tbl-wrap">
+      <table class="wl scr">
+        <thead><tr><th>Mã</th><th>Báo</th><th class="r">Giá</th><th class="r">+/-</th><th class="r" title="KL 5 phiên gần nhất so với 5 phiên trước">KL 5p</th><th class="r">RSI</th><th>40 phiên</th><th>Tiêu chí khớp</th></tr></thead>
+        <tbody id="scrBody"></tbody>
+      </table>
+    </div>
+    <p class="muted hint">Bấm vào một mã để xem biểu đồ và kiểm tra lại tín hiệu.</p>
+  </div>
+</section>
+
+<section id="tab-pf" class="scan" hidden>
+  <div class="panel scr-form">
+    <form id="pfForm" class="pf-form">
+      <label>Mã <input id="pfSym" type="text" placeholder="VD: FPT" autocomplete="off" required></label>
+      <label>Số lượng <input id="pfQty" type="number" min="1" step="1" placeholder="1000" required></label>
+      <label>Giá vốn (nghìn đ) <input id="pfCost" type="text" inputmode="decimal" placeholder="57,1" required></label>
+      <button class="btn primary" type="submit">Thêm vào danh mục</button>
+    </form>
+    <label class="pf-stop">Báo cắt lỗ khi lỗ quá <input id="pfStop" class="pnum" type="number" min="0" step="0.5" value="7"> % so với giá vốn</label>
+  </div>
+  <div class="stats pf-sum" id="pfSum"></div>
+  <div class="panel scr-res">
+    <div id="pfInfo" class="scr-info muted"></div>
+    <div class="tbl-wrap">
+      <table class="wl scr">
+        <thead><tr><th>Mã</th><th class="r">SL</th><th class="r">Giá vốn</th><th class="r">Giá</th><th class="r">Hôm nay</th><th class="r">Lãi/lỗ</th><th class="r">Lãi/lỗ (đ)</th><th>Khuyến nghị</th><th>Tín hiệu</th><th></th></tr></thead>
+        <tbody id="pfBody"></tbody>
+      </table>
+    </div>
+    <p class="muted hint">Mua thêm cùng mã thì nhập lại, app tự tính giá vốn bình quân. Bấm vào một mã để xem biểu đồ.</p>
+  </div>
+</section>
+
+<main class="layout" id="tab-chart" hidden>
+  <aside class="panel watch">
+    <div class="panel-head">
+      <h2>Danh mục theo dõi</h2>
+      <select id="sort" aria-label="Sắp xếp">
+        <option value="score">Điểm tín hiệu</option>
+        <option value="chg">% thay đổi</option>
+        <option value="rsi">RSI</option>
+        <option value="vol">KL đột biến</option>
+        <option value="sym">Mã A→Z</option>
+      </select>
+    </div>
+    <form id="addForm" class="add">
+      <input id="addSym" type="text" placeholder="Thêm mã, ví dụ: VIC, DGC" autocomplete="off" aria-label="Thêm mã">
+      <button class="btn" type="submit">Thêm</button>
+    </form>
+    <div class="summary" id="summary"></div>
+    <div class="tbl-wrap">
+      <table class="wl">
+        <thead><tr><th>Mã</th><th class="r">Giá</th><th class="r">+/-</th><th class="r">RSI</th><th>30 phiên</th><th>Tín hiệu</th></tr></thead>
+        <tbody id="wl"></tbody>
+      </table>
+    </div>
+  </aside>
+
+  <section class="panel detail" id="detail">
+    <div class="d-head">
+      <div>
+        <div class="d-sym"><span id="dSym">—</span><span id="dSig" class="pill"></span></div>
+        <div class="d-price"><span id="dPrice">—</span><span id="dChg"></span></div>
+        <div class="muted" id="dDate"></div>
+      </div>
+      <div class="ranges" role="group" aria-label="Khoảng thời gian">
+        <button data-r="66">3T</button><button data-r="130" class="on">6T</button><button data-r="250">1N</button><button data-r="0">Tất cả</button>
+      </div>
+    </div>
+    <div class="stats" id="dStats"></div>
+    <div class="legend">
+      <label><input type="checkbox" id="tMA" checked> <i style="--c:var(--ma20)"></i>MA20 <i style="--c:var(--ma50)"></i>MA50 <i style="--c:var(--ma200)"></i>MA200</label>
+      <label><input type="checkbox" id="tBB"> <i style="--c:var(--bb)"></i>Bollinger</label>
+      <label><input type="checkbox" id="tSig" checked> ▲▼ Tín hiệu</label>
+    </div>
+    <div id="cMain" class="chart main-chart"></div>
+    <div class="sub-label">RSI (14)</div>
+    <div id="cRsi" class="chart sub-chart"></div>
+    <div class="sub-label">MACD (12, 26, 9)</div>
+    <div id="cMacd" class="chart sub-chart"></div>
+
+    <div class="cols">
+      <div>
+        <h3>Chấm điểm phiên gần nhất</h3>
+        <ul class="rules" id="dRules"></ul>
+      </div>
+      <div>
+        <h3>Lịch sử tín hiệu</h3>
+        <div class="tbl-wrap"><table class="hist"><thead><tr><th>Ngày</th><th>Tín hiệu</th><th class="r">Giá</th><th class="r">Đến nay</th></tr></thead><tbody id="dHist"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="foot">
+  Dữ liệu giá ngày từ VNDirect, đơn vị giá cổ phiếu: nghìn đồng. Trong giờ giao dịch, bộ lọc tự quét lại mỗi 5 phút.
+  Chỉ mang tính tham khảo, không phải khuyến nghị đầu tư. Biểu đồ: TradingView Lightweight Charts.
+</footer>
+<script src="vendor/lightweight-charts.js"></script>
+<script src="ta.js"></script>
+<script src="app.js"></script>
+<script src="screener.js"></script>
+<script src="portfolio.js"></script>
+</body>
+</html>
