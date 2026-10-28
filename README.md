@@ -21,3 +21,11 @@ Mở `web/index.html` bằng trình duyệt (khi đó có thể chỉ có dữ l
 3. Mỗi lần push lên nhánh `CK-APP`, Netlify tự triển khai lại.
 
 `web/symbols.json` là danh sách mã lưu sẵn, dùng khi không lấy được danh sách mã mới từ VNDirect.
+
+## Bản tin cổ phiếu nổi bật mỗi sáng
+- `ban_tin.py` quét toàn bộ mã trong `web/symbols.json` (HOSE, HNX, UPCoM), chỉ xét mã có GTGD TB20 ≥ 3 tỷ, rồi ghi bản tin HTML vào `ban_tin/ban_tin_YYYY-MM-DD.html` (và `ban_tin/moi_nhat.html`), mở bằng trình duyệt.
+  - Thị trường: VN-Index, VN30, HNX, UPCoM (phiên, 5 phiên, so với MA20/MA50), số mã tăng/giảm, % mã trên MA50/MA200, top GTGD, tăng/giảm mạnh 5 phiên.
+  - MUA: MA20 cắt lên MA50, MA20/50/100 hội tụ ≤2% và giá nằm trên, KL 5 phiên ≥ 2 lần 5 phiên trước (giá không giảm), vượt đỉnh 20 phiên với KL ≥ 1,5 lần TB50, MA50 cắt lên MA200.
+  - BÁN: MA20 cắt xuống MA50, KL 5 phiên ≥ 2 lần nhưng giá giảm, gãy MA50 với KL lớn, MA50 cắt xuống MA200.
+- Chạy tay: bấm đúp `CHAY_BAN_TIN.bat` (tuỳ chọn: `--gtgd 5`, `--khong-mo`).
+- Đặt lịch tự động 7h00 thứ 2 – thứ 6: bấm đúp `CAI_LICH_BAN_TIN.bat` một lần (tạo tác vụ Windows "CK Ban tin sang"; máy tắt lúc 7h thì chạy ngay khi bật máy). Xoá lịch: `schtasks /delete /tn "CK Ban tin sang" /f`.
