@@ -125,7 +125,10 @@ for (const c of CRITERIA) if (c.param && scr.params[c.param.key] === undefined) 
 const cache = {};   // bars theo mã, giữ trong 60 giây
 async function barsCached(sym) {
   const c = cache[sym]; if (c && Date.now() - c.t < 60_000) return c.bars;
-  const bars = await fetchBars(sym, 400); cache[sym] = { t: Date.now(), bars }; return bars;
+  let bars;
+  try { bars = await fetchBars(sym, 400, 12_000); }
+  catch { await new Promise(r => setTimeout(r, 1500)); bars = await fetchBars(sym, 400, 15_000); }   // nguồn chậm hoặc chặn tạm: nghỉ rồi thử lại 1 lần
+  cache[sym] = { t: Date.now(), bars }; return bars;
 }
 
 function renderCriteria() {
@@ -178,8 +181,8 @@ async function runScreen() {
   if (!syms.length) { $("scrInfo").textContent = "Danh sách mã đang trống. Thêm mã vào danh mục hoặc chọn danh sách khác."; $("scrBody").innerHTML = ""; return; }
   if (!chosen.length) { $("scrInfo").textContent = "Hãy tick ít nhất một tiêu chí."; $("scrBody").innerHTML = ""; return; }
   $("scan").disabled = true; let done = 0;
-  $("scrInfo").textContent = `Đang quét ${syms.length} mã…`;
-  const res = await pool(syms, syms.length > 200 ? 12 : 6, async s => { const b = await barsCached(s); $("scrInfo").textContent = `Đang quét ${++done}/${syms.length} mã…`; return b; });
+  $("scrInfo").textContent = `Đang quét ${syms.length} mã…`; $("scrBody").innerHTML = "";   // xoá kết quả lần trước để không nhầm
+  const res = await pool(syms, syms.length > 200 ? 8 : 6, async s => { const b = await barsCached(s); $("scrInfo").textContent = `Đang quét ${++done}/${syms.length} mã…`; return b; });
   let rows = []; const failed = []; let illiquid = 0, noFa = 0;
   syms.forEach((s, k) => {
     const bars = res[k]; if (!Array.isArray(bars) || bars.length < 120) { failed.push(s); return; }

@@ -30,7 +30,7 @@ VND_RATIOS = ("https://finfo-api.vndirect.com.vn/v4/ratios/latest?filter=ratioCo
               "ROAE_TR_AVG5Q,ROAA_TR_AVG5Q,EPS_TR,BVPS_CR,DIVIDEND_YIELD&where=code:{sym}&order=reportDate&fields=ratioCode,value,reportDate")
 FA_CACHE_SECONDS = 12 * 3600
 RESOLUTIONS = {"1", "5", "15", "30", "60", "D", "W", "M"}  # D = ngày; 1/5/15… = phút (trong phiên)
-CACHE_SECONDS = 15  # dashboard tự làm mới mỗi phút, cache ngắn để không gọi VNDirect dồn dập
+CACHE_SECONDS = 60  # bộ lọc toàn thị trường quét lại nhanh hơn, không gọi VNDirect dồn dập
 _cache = {}
 
 
@@ -166,7 +166,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             params = urllib.parse.urlencode({"resolution": resolution, "symbol": symbol, "from": now - days * 86400, "to": now})
             try:
                 req = urllib.request.Request(f"{VNDIRECT_URL}?{params}", headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=15) as r:
+                with urllib.request.urlopen(req, timeout=10) as r:
                     body, status = r.read(), 200
                 _cache[key] = (time.time(), body)
             except Exception as e:

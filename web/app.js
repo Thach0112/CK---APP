@@ -14,9 +14,12 @@ const state = { list: store.get("ck.watchlist", DEFAULT_LIST), sel: store.get("c
   sort: store.get("ck.sort", "score"), range: 130, rows: {}, prevAction: {} };
 
 // ---------- Dữ liệu ----------
-async function fetchBars(sym, days = 900) {
-  const r = await fetch(`/api/history?symbol=${encodeURIComponent(sym)}&days=${days}`);
-  const j = await r.json();
+async function fetchBars(sym, days = 900, timeout = 20_000) {
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), timeout);   // không để một mã treo làm đứng cả bộ quét
+  let j;
+  try { j = await (await fetch(`/api/history?symbol=${encodeURIComponent(sym)}&days=${days}`, { signal: ac.signal })).json(); }
+  catch (e) { throw new Error(e.name === "AbortError" ? "Quá thời gian chờ" : e.message); }
+  finally { clearTimeout(tm); }
   if (j.s !== "ok" || !j.t?.length) throw new Error(j.error || "Không có dữ liệu cho mã này");
   return j.t.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10),
     open: +j.o[i], high: +j.h[i], low: +j.l[i], close: +j.c[i], volume: +j.v[i] }));
