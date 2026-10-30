@@ -12,3 +12,8 @@
   from = "/api/symbols"
   to = "/.netlify/functions/symbols"
   status = 200
+
+[[redirects]]
+  from = "/api/fundamental"
+  to = "/.netlify/functions/fundamental"
+  status = 200

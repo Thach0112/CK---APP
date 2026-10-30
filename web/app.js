@@ -21,6 +21,21 @@ async function fetchBars(sym, days = 900) {
   return j.t.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10),
     open: +j.o[i], high: +j.h[i], low: +j.l[i], close: +j.c[i], volume: +j.v[i] }));
 }
+// Chỉ số cơ bản (FA) theo quý. Báo cáo tài chính chỉ đổi theo quý nên lưu lại 12 giờ.
+const faSaved = store.get("ck.fa", {}), faMem = {};
+let faSaveTimer = 0;
+async function fetchFa(sym) {
+  if (faMem[sym]) return faMem[sym];
+  if (faSaved[sym] && Date.now() - faSaved[sym].t < 12 * 3600_000) return faMem[sym] = faSaved[sym].f;
+  const j = await (await fetch(`/api/fundamental?symbol=${encodeURIComponent(sym)}`)).json();
+  if (j.s !== "ok") throw new Error(j.error || "Không có dữ liệu cơ bản");
+  const f = FA.normalize(j.source, j.data);
+  if (!f.quarters.length) throw new Error("Không có dữ liệu cơ bản");
+  f.quarters = f.quarters.slice(0, 8);
+  faSaved[sym] = { t: Date.now(), f };
+  clearTimeout(faSaveTimer); faSaveTimer = setTimeout(() => store.set("ck.fa", faSaved), 1000);   // gom lại rồi lưu một lần
+  return faMem[sym] = f;
+}
 async function pool(items, n, fn) {   // giới hạn số request song song
   const out = []; let k = 0;
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
@@ -151,6 +166,7 @@ function renderDetail() {
     ["Xu hướng", r.trend > 0 ? '<span class="up">Tăng</span>' : r.trend < 0 ? '<span class="down">Giảm</span>' : "Đi ngang"],
   ];
   $("dStats").innerHTML = st.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+  renderFaDetail(r.sym, last.close);
 
   if (!charts) charts = makeCharts();
   const s = charts.s, up = css("--up"), down = css("--down");
@@ -175,6 +191,21 @@ function renderDetail() {
   $("dHist").innerHTML = ev.length ? ev.map(i => { const b = d.bars[i], ret = last.close / b.close - 1;
     return `<tr><td class="num">${dmy(b.date)}</td><td>${pill(d.action[i])}</td><td class="r num">${nf(b.close)}</td><td class="r num ${dir(ret)}">${pct(ret)}</td></tr>`; }).join("")
     : `<tr><td colspan="4" class="empty">Chưa có tín hiệu MUA/BÁN trong dữ liệu.</td></tr>`;
+}
+const fpct = (x, k = 1) => isFinite(x) && x !== null ? (x * 100).toFixed(k).replace(".", ",") + "%" : "—";   // tỷ lệ, không dấu +
+const fnum = (x, k = 1) => isFinite(x) && x !== null ? nf(x, k) : "—";
+async function renderFaDetail(sym, price) {
+  if (!faMem[sym]) { $("dFaHead").textContent = "Chỉ số cơ bản (FA): đang tải…"; $("dFa").innerHTML = ""; }
+  let m;
+  try { m = FA.metrics(await fetchFa(sym), price); } catch (e) { m = null; $("dFaHead").textContent = "Chỉ số cơ bản (FA): " + e.message; }
+  if (state.sel !== sym) return;
+  if (!m) { $("dFa").innerHTML = ""; return; }
+  $("dFaHead").textContent = `Chỉ số cơ bản (FA) · báo cáo ${m.period}`;
+  const g = x => isFinite(x) && x !== null ? `<span class="${dir(x)}">${pct(x)}</span>` : "—";
+  $("dFa").innerHTML = [["P/E", fnum(m.pe)], ["P/B", fnum(m.pb, 2)], ["EPS 4 quý (đ)", fnum(m.eps, 0)], ["PEG", fnum(m.peg, 2)],
+    ["ROE", fpct(m.roe)], ["ROA", fpct(m.roa)], ["Nợ / vốn chủ", fnum(m.de, 2)], ["Biên LN ròng", fpct(m.nm)],
+    ["Doanh thu quý so cùng kỳ", g(m.revYoY)], ["LNST quý so cùng kỳ", g(m.npYoY)], ["LNST 4 quý so cùng kỳ", g(m.npTtmYoY)], ["Cổ tức", fpct(m.dy)]]
+    .map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
 }
 function applyRange() {
   if (!charts) return; const n = state.rows[state.sel]?.d.bars.length || 0;

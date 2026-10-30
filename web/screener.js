@@ -1,4 +1,4 @@
-// Bộ lọc tín hiệu: quét nhiều mã theo các tiêu chí TA, báo mã nào cho tín hiệu MUA / BÁN.
+// Bộ lọc tín hiệu: quét nhiều mã theo các tiêu chí TA và FA (phân tích cơ bản, xem fa.js), báo mã nào cho tín hiệu MUA / BÁN.
 const UNIVERSES = {
   vn30: { name: "VN30", list: "ACB BCM BID BVH CTG FPT GAS GVR HDB HPG LPB MBB MSN MWG PLX SAB SHB SSB SSI STB TCB TPB VCB VHM VIB VIC VJC VNM VPB VRE" },
   liquid: { name: "Thanh khoản cao (~100 mã)", list: "ACB BCM BID BVH CTG FPT GAS GVR HDB HPG LPB MBB MSN MWG PLX SAB SHB SSB SSI STB TCB TPB VCB VHM VIB VIC VJC VNM VPB VRE " +
@@ -80,6 +80,7 @@ const CRITERIA = [
   { id: "death", side: "BÁN", label: "Giao cắt tử thần: MA50 cắt xuống MA200", group: "pro", test: (d, L, N) => within(N, L, i => crossDn(d.ma50, d.ma200, i)) },
   { id: "rsi2exit", side: "BÁN", label: "Chốt lệnh RSI(2): giá đóng cửa vượt lên MA5", group: "pro", test: (d, L, N) => { const x = ext(d); return within(N, L, i => crossUp(d.close, x.ma5, i)); } },
   { id: "mal200", side: "BÁN", label: "Giá cắt xuống dưới MA200", test: (d, L, N) => within(N, L, i => crossDn(d.close, d.ma200, i)) },
+  ...FA_CRITERIA,   // tiêu chí cơ bản: có thuộc tính fa, test(m, p) với m = FA.metrics
 ];
 // Các chuỗi chỉ báo bổ sung, tính một lần cho mỗi mã
 function ext(d) {
@@ -98,8 +99,12 @@ function ext(d) {
 function avgValue(bars) { const t = bars.slice(-20); return t.reduce((a, b) => a + b.close * b.volume, 0) / t.length * 1000 / 1e9; }
 function sum(a, from, to) { let s = 0; for (let i = Math.max(0, from); i <= to; i++) s += a[i]; return s; }
 
+// params: tham số đặt lại khi chọn bộ lọc mẫu (các tham số khác giữ nguyên)
 const PRESETS = [
-  { name: "Khuyến nghị: Xu hướng mạnh + Breakout", on: ["trend", "brkvol"], mode: "all", n: 5 },
+  { name: "Khuyến nghị FA + TA: DN tốt đang vào xu hướng", on: ["fa_roe", "fa_ttm", "fa_pe", "trend", "brkvol", "golden", "macdup"], mode: "any", n: 5,
+    params: { roeMin: 15, ttmMin: 15, peMax: 20 } },
+  { name: "CANSLIM (FA + TA)", on: ["fa_np", "fa_ttm", "fa_roe", "trend", "near52"], mode: "all", n: 3, params: { npMin: 25, ttmMin: 25, roeMin: 17, near: 15 } },
+  { name: "Khuyến nghị TA: Xu hướng mạnh + Breakout", on: ["trend", "brkvol"], mode: "all", n: 5 },
   { name: "Xu hướng mạnh (Minervini)", on: ["trend"], mode: "all", n: 3 },
   { name: "Gần đỉnh 52 tuần", on: ["near52"], mode: "all", n: 1 },
   { name: "Mua điều chỉnh RSI(2)", on: ["rsi2"], mode: "all", n: 1 },
@@ -107,6 +112,11 @@ const PRESETS = [
   { name: "Giao cắt vàng MA50/200", on: ["golden"], mode: "all", n: 5 },
   { name: "Dòng tiền gom hàng", on: ["accum", "pocket"], mode: "any", n: 3 },
   { name: "Bộ lọc của bạn: MA20/50/100 + KL", on: ["ma2up", "ma3up", "vol5"], mode: "any", n: 3 },
+  { name: "FA: Giá trị (Graham)", on: ["fa_pe", "fa_pb", "fa_graham", "fa_de"], mode: "any", n: 3, params: { peMax: 12, pbMax: 1.5, deMax: 1 }, fa: true },
+  { name: "FA: Chất lượng (ROE cao, nợ thấp)", on: ["fa_roe4", "fa_de", "fa_ttm"], mode: "any", n: 3, params: { roe4Min: 15, deMax: 0.7, ttmMin: 0 }, fa: true },
+  { name: "FA: Tăng trưởng giá hợp lý (GARP)", on: ["fa_peg", "fa_ttm", "fa_roe"], mode: "any", n: 3, params: { pegMax: 1, ttmMin: 15, roeMin: 15 }, fa: true },
+  { name: "FA: Tăng trưởng mạnh", on: ["fa_np", "fa_rev", "fa_streak", "fa_accel"], mode: "any", n: 3, params: { npMin: 25, revMin: 15, streak: 3 }, fa: true },
+  { name: "Cảnh báo BÁN FA: LN giảm 2 quý", on: ["fa_drop"], mode: "any", n: 3, sell: true, fa: true },
   { name: "Cảnh báo BÁN", on: ["ma50vol", "death", "mal200", "brkdn", "distrib"], mode: "any", n: 3, sell: true },
 ];
 const scr = store.get("ck.screener", { uni: "vn30", custom: "", n: 3, mode: "any",
@@ -119,14 +129,16 @@ async function barsCached(sym) {
 }
 
 function renderCriteria() {
-  const GROUPS = [["pro", "Theo nghiên cứu"], ["flow", "Dòng tiền"], [undefined, "Cơ bản"]];
-  const box = side => GROUPS.map(([g, title]) => { const items = CRITERIA.filter(c => c.side === side && c.group === g);
+  const GROUPS = [["pro", "Theo nghiên cứu"], ["flow", "Dòng tiền"], [undefined, "Thông dụng"]];
+  const FA_GROUPS = [["val", "Định giá"], ["grow", "Tăng trưởng"], ["qual", "Hiệu quả & sức khoẻ tài chính"], ["warn", "Cảnh báo cơ bản xấu"]];
+  const box = side => GROUPS.map(([g, title]) => { const items = CRITERIA.filter(c => !c.fa && c.side === side && c.group === g);
     return items.length ? `<div class="cgroup">${title}</div>` + item(items) : ""; }).join("");
   const item = list => list.map(c => `
     <label class="crit"><input type="checkbox" data-c="${c.id}" ${scr.on.includes(c.id) ? "checked" : ""}>
       <span>${c.label}${c.param ? ` <input class="pnum" type="number" step="any" min="0" data-p="${c.param.key}" value="${scr.params[c.param.key] ?? c.param.val}" aria-label="${c.label}"> ${c.param.unit}` : ""}${c.note ? ` <small>${c.note}</small>` : ""}</span></label>`).join("");
-  $("presets").innerHTML = PRESETS.map((p, k) => `<button type="button" class="preset ${p.sell ? "sell" : ""} ${k === 0 ? "rec" : ""}" data-pre="${k}">${p.name}</button>`).join("");
+  $("presets").innerHTML = PRESETS.map((p, k) => `<button type="button" class="preset ${p.sell ? "sell" : ""} ${p.fa ? "fa" : ""} ${k < 2 ? "rec" : ""}" data-pre="${k}">${p.name}</button>`).join("");
   $("critBuy").innerHTML = box("MUA"); $("critSell").innerHTML = box("BÁN");
+  $("critFa").innerHTML = FA_GROUPS.map(([g, title]) => `<div><div class="cgroup">${title}</div>${item(CRITERIA.filter(c => c.fa === g))}</div>`).join("");
   $("uni").value = scr.uni; $("custom").value = scr.custom; $("custom").hidden = scr.uni !== "custom";
   $("minVal").value = scr.minVal ?? 1;
   $("winN").value = scr.n; $("mode").value = scr.mode;
@@ -162,51 +174,76 @@ async function runScreen() {
   let syms;
   try { syms = await universe(); }
   catch (e) { $("scrInfo").textContent = "Không lấy được danh sách mã toàn thị trường: " + e.message; return; }
-  const chosen = CRITERIA.filter(c => scr.on.includes(c.id));
+  const chosen = CRITERIA.filter(c => scr.on.includes(c.id)), ta = chosen.filter(c => !c.fa), fa = chosen.filter(c => c.fa);
   if (!syms.length) { $("scrInfo").textContent = "Danh sách mã đang trống. Thêm mã vào danh mục hoặc chọn danh sách khác."; $("scrBody").innerHTML = ""; return; }
   if (!chosen.length) { $("scrInfo").textContent = "Hãy tick ít nhất một tiêu chí."; $("scrBody").innerHTML = ""; return; }
   $("scan").disabled = true; let done = 0;
   $("scrInfo").textContent = `Đang quét ${syms.length} mã…`;
   const res = await pool(syms, syms.length > 200 ? 12 : 6, async s => { const b = await barsCached(s); $("scrInfo").textContent = `Đang quét ${++done}/${syms.length} mã…`; return b; });
-  const rows = [], failed = []; let illiquid = 0;
+  let rows = []; const failed = []; let illiquid = 0, noFa = 0;
   syms.forEach((s, k) => {
     const bars = res[k]; if (!Array.isArray(bars) || bars.length < 120) { failed.push(s); return; }
     if (scr.minVal > 0 && avgValue(bars) < scr.minVal) { illiquid++; return; }
     const d = analyze(bars), L = bars.length - 1;
-    const hits = chosen.filter(c => { try { return c.test(d, L, scr.n, scr.params); } catch { return false; } });
-    const ok = scr.mode === "all" ? hits.length === chosen.length : hits.length > 0;
+    // TA xét theo "Cách lọc"; nếu chỉ tick tiêu chí FA thì bỏ qua bước này
+    const hits = ta.filter(c => { try { return c.test(d, L, scr.n, scr.params); } catch { return false; } });
+    const ok = !ta.length || (scr.mode === "all" ? hits.length === ta.length : hits.length > 0);
     if (!ok) return;
-    const buy = hits.filter(h => h.side === "MUA").length, sell = hits.length - buy;
     const v = bars.map(b => b.volume);
-    rows.push({ s, bars, d, L, hits, buy, sell, verdict: buy > sell ? "MUA" : sell > buy ? "BÁN" : "THEO DÕI",
-      chg: bars[L].close / bars[L - 1].close - 1, volK: sum(v, L - 4, L) / (sum(v, L - 9, L - 5) || 1), rsi: d.rsi[L] });
+    rows.push({ s, bars, d, L, hits, chg: bars[L].close / bars[L - 1].close - 1, volK: sum(v, L - 4, L) / (sum(v, L - 9, L - 5) || 1), rsi: d.rsi[L] });
   });
+  // FA: chỉ tải báo cáo tài chính cho các mã đã qua bước TA, mã phải đạt tất cả tiêu chí FA được tick
+  if (fa.length && rows.length) {
+    done = 0;
+    await pool(rows, 6, async r => { try { r.fa = FA.metrics(await fetchFa(r.s), r.bars[r.L].close); } catch { r.fa = null; }
+      $("scrInfo").textContent = `Đang tải chỉ số cơ bản ${++done}/${rows.length} mã…`; });
+    noFa = rows.filter(r => !r.fa).length;
+    rows = rows.filter(r => { if (!r.fa) return false;
+      const fh = fa.filter(c => { try { return c.test(r.fa, scr.params); } catch { return false; } });
+      if (fh.length < fa.length) return false; r.hits = r.hits.concat(fh); return true; });
+  }
+  for (const r of rows) { r.buy = r.hits.filter(h => h.side === "MUA").length; r.sell = r.hits.length - r.buy;
+    r.verdict = r.buy > r.sell ? "MUA" : r.sell > r.buy ? "BÁN" : "THEO DÕI"; }
   rows.sort((a, b) => (b.buy - b.sell) - (a.buy - a.sell) || b.hits.length - a.hits.length || b.chg - a.chg);
   const nb = rows.filter(r => r.verdict === "MUA").length, ns = rows.filter(r => r.verdict === "BÁN").length;
   $("scrInfo").innerHTML = `Quét ${syms.length - failed.length - illiquid} mã, phiên ${dmy(rows[0]?.bars.at(-1).date || res.find(Array.isArray)?.at(-1).date || "")}: ` +
     `<b>${rows.length}</b> mã khớp · <span class="up">${nb} báo MUA</span> · <span class="down">${ns} báo BÁN</span>` +
     (illiquid ? ` <span class="muted">· bỏ qua ${illiquid} mã GTGD dưới ${scr.minVal} tỷ/phiên</span>` : "") +
+    (noFa ? ` <span class="muted">· ${noFa} mã không lấy được chỉ số cơ bản</span>` : "") +
     (failed.length ? ` <span class="muted">· ${failed.length > 15 ? failed.length + " mã không đủ dữ liệu (mới niêm yết hoặc ít giao dịch)" : "không lấy được: " + failed.join(", ")}</span>` : "");
   $("scrBody").innerHTML = rows.length ? rows.map(r => `
     <tr data-s="${r.s}">
       <td class="sym">${r.s}</td><td>${pill(r.verdict)}</td>
       <td class="r num ${dir(r.chg)}">${nf(r.bars[r.L].close)}</td><td class="r num ${dir(r.chg)}">${pct(r.chg, 2)}</td>
-      <td class="r num">${nf(r.volK, 1)}×</td><td class="r num">${nf(r.rsi, 0)}</td>
+      <td class="r num">${nf(r.volK, 1)}×</td><td class="r num">${nf(r.rsi, 0)}</td>${faCells(r.fa)}
       <td>${spark(r.d.close.slice(-40), 72)}</td>
-      <td><div class="chips">${r.hits.map(h => `<span class="chip ${h.side === "MUA" ? "b" : "s"}">${short(h)}</span>`).join("")}</div></td></tr>`).join("")
-    : `<tr><td colspan="8" class="empty">Không có mã nào khớp. Thử tăng số phiên xét hoặc chọn chế độ "Khớp bất kỳ".</td></tr>`;
+      <td><div class="chips">${r.hits.map(h => `<span class="chip ${h.side === "MUA" ? (h.fa ? "f" : "b") : "s"}">${short(h)}</span>`).join("")}</div></td></tr>`).join("")
+    : `<tr><td colspan="12" class="empty">Không có mã nào khớp. Thử tăng số phiên xét hoặc chọn chế độ "Khớp bất kỳ".</td></tr>`;
   $("scan").disabled = false;
   scr.lastRun = Date.now();
+  // Không lọc FA thì vẫn tải chỉ số cơ bản để điền các cột P/E, P/B, ROE, LN quý (tối đa 150 mã đầu bảng)
+  const need = rows.filter(r => r.fa === undefined).slice(0, 150), run = scr.lastRun;
+  await pool(need, 4, async r => { try { r.fa = FA.metrics(await fetchFa(r.s), r.bars[r.L].close); } catch { r.fa = null; }
+    const tr = scr.lastRun === run && document.querySelector(`#scrBody tr[data-s="${r.s}"]`);
+    if (tr) tr.querySelectorAll(".fa-c").forEach((td, k) => td.outerHTML = faCells(r.fa).split("</td>")[k] + "</td>"); });
+}
+// Các cột FA trong bảng kết quả
+function faCells(m) {
+  if (m === undefined) return `<td class="r num muted fa-c">…</td>`.repeat(4);
+  if (!m) return `<td class="r num muted fa-c">—</td>`.repeat(4);
+  const v = (x, f) => x === null || !isFinite(x) ? "—" : f(x);
+  return `<td class="r num fa-c">${v(m.pe, x => nf(x, 1))}</td><td class="r num fa-c">${v(m.pb, x => nf(x, 2))}</td>` +
+    `<td class="r num fa-c">${v(m.roe, x => fpct(x, 0))}</td><td class="r num fa-c ${dir(m.npYoY)}">${v(m.npYoY, x => pct(x, 0))}</td>`;
 }
 const SHORT = { accum: "Gom hàng (OBV)", cmf: "CMF > 0", updown: "KL tăng > giảm", pocket: "Pocket pivot", distrib: "Phân phối", trend: "Xu hướng mạnh", brkvol: "Breakout + KL", near52: "Gần đỉnh 52T", rsi2: "RSI(2) thấp", squeeze: "Nén BB bứt phá", golden: "Giao cắt vàng",
   ma50vol: "Gãy MA50 + KL", death: "Giao cắt tử thần", rsi2exit: "Giá > MA5", ma2up: "MA20↗MA50", ma3up: "MA20>50>100", ma3conv: "3 MA hội tụ", vol5: "KL 5p ×" , macdup: "MACD↗", rsiup: "RSI>30", brk20: "Vượt đỉnh 20p",
   ma200: "Trên MA200", ma2dn: "MA20↘MA50", ma3dn: "MA20<50<100", macddn: "MACD↘", rsidn: "RSI<70", vol5dn: "KL tăng, giá giảm", brkdn: "Thủng đáy 20p", mal200: "Thủng MA200" };
-const short = h => h.id === "vol5" ? `KL 5p ×${scr.params.volK}` : SHORT[h.id];
+const short = h => h.id === "vol5" ? `KL 5p ×${scr.params.volK}` : SHORT[h.id] || FA_SHORT[h.id];
 
 $("presets").onclick = e => {
   const b = e.target.closest("[data-pre]"); if (!b) return; const p = PRESETS[+b.dataset.pre];
   readForm();
-  scr.on = [...p.on]; scr.mode = p.mode; scr.n = p.n; store.set("ck.screener", scr); renderCriteria(); runScreen();
+  scr.on = [...p.on]; scr.mode = p.mode; scr.n = p.n; Object.assign(scr.params, p.params || {}); store.set("ck.screener", scr); renderCriteria(); runScreen();
 };
 $("scrForm").onsubmit = e => { e.preventDefault(); runScreen(); };
 $("scrForm").onchange = e => { if (e.target.id === "uni") readForm(); };

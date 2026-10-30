@@ -12,7 +12,7 @@
 <header class="topbar">
   <div class="brand">
     <span class="logo" aria-hidden="true"></span>
-    <div><b>CK Tự Động</b><small>Lọc và báo tín hiệu Mua/Bán theo chỉ báo kỹ thuật</small></div>
+    <div><b>CK Tự Động</b><small>Lọc cổ phiếu theo phân tích kỹ thuật (TA) và cơ bản (FA)</small></div>
   </div>
   <div class="status">
     <span id="mkt" class="mkt"></span>
@@ -58,12 +58,17 @@
       <fieldset><legend class="up">Tiêu chí MUA</legend><div id="critBuy"></div></fieldset>
       <fieldset><legend class="down">Tiêu chí BÁN</legend><div id="critSell"></div></fieldset>
     </div>
+    <fieldset class="fa-box"><legend class="fa">Phân tích cơ bản (FA)</legend>
+      <p class="muted fa-note">Tiêu chí FA là điều kiện bắt buộc: mã phải đạt tất cả các ô FA được tick, rồi mới xét tiếp tiêu chí kỹ thuật (TA) ở trên theo "Cách lọc".
+        Số liệu theo báo cáo tài chính quý gần nhất; P/E, P/B tính theo giá hiện tại.</p>
+      <div id="critFa" class="crit-cols"></div>
+    </fieldset>
   </form>
   <div class="panel scr-res">
     <div id="scrInfo" class="scr-info"></div>
     <div class="tbl-wrap">
       <table class="wl scr">
-        <thead><tr><th>Mã</th><th>Báo</th><th class="r">Giá</th><th class="r">+/-</th><th class="r" title="KL 5 phiên gần nhất so với 5 phiên trước">KL 5p</th><th class="r">RSI</th><th>40 phiên</th><th>Tiêu chí khớp</th></tr></thead>
+        <thead><tr><th>Mã</th><th>Báo</th><th class="r">Giá</th><th class="r">+/-</th><th class="r" title="KL 5 phiên gần nhất so với 5 phiên trước">KL 5p</th><th class="r">RSI</th><th class="r" title="P/E theo giá hiện tại">P/E</th><th class="r">P/B</th><th class="r">ROE</th><th class="r" title="LNST quý gần nhất so với cùng kỳ năm trước">LN quý</th><th>40 phiên</th><th>Tiêu chí khớp</th></tr></thead>
         <tbody id="scrBody"></tbody>
       </table>
     </div>
@@ -131,6 +136,8 @@
       </div>
     </div>
     <div class="stats" id="dStats"></div>
+    <div class="sub-label" id="dFaHead">Chỉ số cơ bản (FA)</div>
+    <div class="stats fa-stats" id="dFa"></div>
     <div class="legend">
       <label><input type="checkbox" id="tMA" checked> <i style="--c:var(--ma20)"></i>MA20 <i style="--c:var(--ma50)"></i>MA50 <i style="--c:var(--ma200)"></i>MA200</label>
       <label><input type="checkbox" id="tBB"> <i style="--c:var(--bb)"></i>Bollinger</label>
@@ -155,11 +162,12 @@
   </section>
 </main>
 <footer class="foot">
-  Dữ liệu giá ngày từ VNDirect, đơn vị giá cổ phiếu: nghìn đồng. Trong giờ giao dịch, bộ lọc tự quét lại mỗi 5 phút.
+  Dữ liệu giá ngày từ VNDirect; chỉ số cơ bản từ báo cáo tài chính quý (Vietcap, TCBS hoặc VNDirect). Đơn vị giá cổ phiếu: nghìn đồng. Trong giờ giao dịch, bộ lọc tự quét lại mỗi 5 phút.
   Chỉ mang tính tham khảo, không phải khuyến nghị đầu tư. Biểu đồ: TradingView Lightweight Charts.
 </footer>
 <script src="vendor/lightweight-charts.js"></script>
 <script src="ta.js"></script>
+<script src="fa.js"></script>
 <script src="app.js"></script>
 <script src="screener.js"></script>
 <script src="portfolio.js"></script>
