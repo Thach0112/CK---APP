@@ -16,7 +16,7 @@ async function renderPortfolio() {
     const bars = res[k];
     if (!Array.isArray(bars) || bars.length < 120) return `<tr><td class="sym">${it.sym}</td><td colspan="8" class="err">Không lấy được dữ liệu</td><td><button class="x show" data-pdel="${k}" aria-label="Xoá ${it.sym}">×</button></td></tr>`;
     const d = analyze(bars), L = bars.length - 1, px = bars[L].close, chg = px / bars[L - 1].close - 1;
-    const hits = CRITERIA.filter(c => { try { return c.test(d, L, scr.n, scr.params); } catch { return false; } });
+    const hits = CRITERIA.filter(c => !c.fa).filter(c => { try { return c.test(d, L, scr.n, scr.params); } catch { return false; } });
     const sell = hits.filter(h => h.side === "BÁN"), buy = hits.filter(h => h.side === "MUA");
     const pl = (px - it.cost) / it.cost, stopHit = pl <= -pf.stop / 100;
     const verdict = stopHit ? ["BÁN", "Chạm cắt lỗ"] : sell.length > buy.length ? ["BÁN", "Cân nhắc bán"] : buy.length ? ["MUA", "Giữ / mua thêm"] : ["THEO DÕI", "Tiếp tục giữ"];

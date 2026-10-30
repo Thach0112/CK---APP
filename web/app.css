@@ -164,3 +164,11 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transfor
 .bt-tbl td small { white-space: normal; display: inline-block; max-width: 340px; }
 .eq-chart { height: 170px; }
 .eq-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; background: var(--c); margin: 0 4px 2px 6px; }
+/* Phân tích cơ bản (FA) */
+legend.fa { color: var(--ceil); }
+.fa-box { margin-top: 14px; }
+.fa-note { font-size: 12px; margin: 2px 0 6px; }
+.chip.f { color: var(--ceil); background: color-mix(in srgb, var(--ceil) 14%, transparent); }
+.preset.fa { border-color: color-mix(in srgb, var(--ceil) 60%, var(--line)); color: var(--ceil); }
+.preset.fa.sell { color: var(--down); }
+.fa-stats { margin-top: 4px; }

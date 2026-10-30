@@ -6,6 +6,7 @@ Chỉ dùng thư viện chuẩn của Python, không cần cài thêm gì.
 import http.server
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -20,9 +21,87 @@ SYMBOLS_URLS = [
     "https://finfo-api.vndirect.com.vn/v4/stocks?q=type:stock~status:listed&fields=code,floor,type,status&size=3000",
     "https://finfo-api.vndirect.com.vn/v4/stocks?q=type:STOCK~status:LISTED&fields=code,floor,type,status&size=3000",
 ]
+# Báo cáo tài chính theo quý cho bộ lọc FA: thử lần lượt Vietcap → TCBS → VNDirect, nguồn nào được thì dùng
+VCI_GRAPHQL = "https://trading.vietcap.com.vn/data-mt/graphql"
+VCI_FIELDS = ("ticker yearReport lengthReport revenue revenueGrowth netProfit netProfitGrowth roe roa pe pb eps bvps "
+              "de currentRatio grossMargin netProfitMargin dividend issueShare").split()
+TCBS_URL = "https://apipubaws.tcbs.com.vn/tcanalysis/v1/finance/{sym}/{kind}?yearly=0&isAll=true"
+VND_RATIOS = ("https://finfo-api.vndirect.com.vn/v4/ratios/latest?filter=ratioCode:PRICE_TO_EARNINGS,PRICE_TO_BOOK,"
+              "ROAE_TR_AVG5Q,ROAA_TR_AVG5Q,EPS_TR,BVPS_CR,DIVIDEND_YIELD&where=code:{sym}&order=reportDate&fields=ratioCode,value,reportDate")
+FA_CACHE_SECONDS = 12 * 3600
 RESOLUTIONS = {"1", "5", "15", "30", "60", "D", "W", "M"}  # D = ngày; 1/5/15… = phút (trong phiên)
 CACHE_SECONDS = 15  # dashboard tự làm mới mỗi phút, cache ngắn để không gọi VNDirect dồn dập
 _cache = {}
+
+
+def _get_json(url, body=None, headers=None):
+    h = {"User-Agent": "Mozilla/5.0", **(headers or {})}
+    data = json.dumps(body).encode() if body is not None else None
+    if data:
+        h["Content-Type"] = "application/json"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=h), timeout=20) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if data:  # GraphQL báo lỗi truy vấn kèm mã 400: vẫn đọc nội dung để biết trường nào sai
+            return json.loads(e.read())
+        raise
+
+
+def fa_vci(sym):
+    fields = list(VCI_FIELDS)
+    for _ in range(4):  # trường nào nguồn không còn hỗ trợ thì bỏ đi rồi hỏi lại
+        q = ("query Q($ticker: String!, $period: String!) { CompanyFinancialRatio(ticker: $ticker, period: $period) "
+             "{ ratio { " + " ".join(fields) + " } period } }")
+        raw = _get_json(VCI_GRAPHQL, {"query": q, "variables": {"ticker": sym, "period": "Q"}},
+                        {"Referer": "https://trading.vietcap.com.vn/", "Origin": "https://trading.vietcap.com.vn"})
+        bad = [f for e in raw.get("errors") or [] for f in fields if f'"{f}"' in str(e.get("message", ""))]
+        if bad:
+            fields = [f for f in fields if f not in bad]
+            continue
+        rows = ((raw.get("data") or {}).get("CompanyFinancialRatio") or {}).get("ratio") or []
+        if rows:
+            return {"ratio": rows}
+        break
+    raise ValueError("Vietcap không có dữ liệu")
+
+
+def fa_tcbs(sym):
+    ratio = _get_json(TCBS_URL.format(sym=sym, kind="financialratio"))
+    if not isinstance(ratio, list) or not ratio:
+        raise ValueError("TCBS không có dữ liệu")
+    try:
+        income = _get_json(TCBS_URL.format(sym=sym, kind="incomestatement"))
+    except Exception:
+        income = []
+    return {"ratio": ratio, "income": income if isinstance(income, list) else []}
+
+
+def fa_vnd(sym):
+    raw = _get_json(VND_RATIOS.format(sym=sym))
+    if not raw.get("data"):
+        raise ValueError("VNDirect không có dữ liệu")
+    return raw
+
+
+FA_SOURCES = [("vci", fa_vci), ("tcbs", fa_tcbs), ("vnd", fa_vnd)]
+
+
+def fundamental(sym):
+    """Trả về (body JSON, status) cho /api/fundamental."""
+    key = ("fa", sym)
+    hit = _cache.get(key)
+    if hit and time.time() - hit[0] < FA_CACHE_SECONDS:
+        return hit[1], 200
+    errs = []
+    for name, fn in FA_SOURCES:
+        try:
+            body = json.dumps({"s": "ok", "source": name, "data": fn(sym)}).encode()
+            _cache[key] = (time.time(), body)
+            return body, 200
+        except Exception as e:
+            errs.append(f"{name}: {e}")
+    return json.dumps({"s": "error", "error": "; ".join(errs)}).encode(), 502
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -64,6 +143,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         if url.path == "/api/symbols":
             return self.symbols()
+        if url.path == "/api/fundamental":
+            q = urllib.parse.parse_qs(url.query)
+            sym = "".join(ch for ch in q.get("symbol", [""])[0].upper() if ch.isalnum())[:12]
+            if not sym:
+                return self.send_json(json.dumps({"s": "error", "error": "thiếu mã"}).encode(), 400)
+            return self.send_json(*fundamental(sym))
         if url.path != "/api/history":
             return super().do_GET()
         q = urllib.parse.parse_qs(url.query)
